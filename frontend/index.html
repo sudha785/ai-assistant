@@ -69,57 +69,124 @@
   <div id="chat"></div>
 
   <form id="input-area">
-    <input id="input" type="text" placeholder="Type your message..." autocomplete="off">
-    <button type="submit">Send</button>
-  </form>
+  <input id="input" type="text" placeholder="Type your message..." autocomplete="off">
+  <button type="submit">Send</button>
+  <button type="button" id="voice-btn">🎤</button>
+</form>
+
 
   <script>
-    const chatDiv = document.getElementById("chat");
-    const form = document.getElementById("input-area");
-    const input = document.getElementById("input");
+  const chatDiv = document.getElementById("chat");
+  const form = document.getElementById("input-area");
+  const input = document.getElementById("input");
+  const voiceBtn = document.getElementById("voice-btn");
 
-    const messages = [
-      { role: "system", content: "You are a helpful assistant." }
-    ];
+  // Conversation history
+  const messages = [
+    { role: "system", content: "You are a helpful assistant." }
+  ];
 
-    function addMessage(role, content) {
-      const div = document.createElement("div");
-      div.className = "msg " + (role === "user" ? "user" : "assistant");
-      div.textContent = content;
-      chatDiv.appendChild(div);
-      chatDiv.scrollTop = chatDiv.scrollHeight;
+  function addMessage(role, content) {
+    const div = document.createElement("div");
+    div.className = "msg " + (role === "user" ? "user" : "assistant");
+    div.textContent = (role === "user" ? "You: " : "AI: ") + content;
+    chatDiv.appendChild(div);
+    chatDiv.scrollTop = chatDiv.scrollHeight;
+  }
+
+  // Text-to-speech (AI talks)
+  function speakText(text) {
+    if (!("speechSynthesis" in window)) {
+      console.warn("Text-to-speech not supported in this browser.");
+      return;
     }
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US"; // change language if you want
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  }
 
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const text = input.value.trim();
-      if (!text) return;
+  // Handle form submit (text chat)
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
 
-      addMessage("user", "You: " + text);
-      messages.push({ role: "user", content: text });
-      input.value = "";
+    addMessage("user", text);
+    messages.push({ role: "user", content: text });
+    input.value = "";
 
-      addMessage("assistant", "AI is thinking...");
+    // temporary "thinking" message
+    const thinkingDiv = document.createElement("div");
+    thinkingDiv.className = "msg assistant";
+    thinkingDiv.textContent = "AI is thinking...";
+    chatDiv.appendChild(thinkingDiv);
+    chatDiv.scrollTop = chatDiv.scrollHeight;
 
-      try {
-        const res = await fetch("http://127.0.0.1:8000/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages }),
-        });
+    try {
+      const res = await fetch("http://127.0.0.1:8000/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages }),
+      });
 
-        const data = await res.json();
+      const data = await res.json();
+      chatDiv.removeChild(thinkingDiv);
 
-        chatDiv.lastChild.remove(); // remove "AI is thinking..."
-        const reply = data.reply.content;
-        messages.push({ role: "assistant", content: reply });
-        addMessage("assistant", "AI: " + reply);
-      } catch (error) {
-        chatDiv.lastChild.remove();
-        addMessage("assistant", "Error connecting to backend");
+      const reply = data.reply.content;
+      messages.push({ role: "assistant", content: reply });
+      addMessage("assistant", reply);
+      speakText(reply); // 🔊 make the AI speak
+    } catch (err) {
+      chatDiv.removeChild(thinkingDiv);
+      addMessage("assistant", "Error talking to server 😢 Check console.");
+      console.error(err);
+    }
+  });
+
+  // ---- Voice input (speech to text) ----
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognition;
+  let isListening = false;
+
+  if (SpeechRecognition) {
+    recognition = new SpeechRecognition();
+    recognition.lang = "en-US";         // change to your preferred language
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    voiceBtn.addEventListener("click", () => {
+      if (!isListening) {
+        recognition.start();
+        isListening = true;
+        voiceBtn.textContent = "🛑"; // show it's recording
+      } else {
+        recognition.stop();
+        isListening = false;
+        voiceBtn.textContent = "🎤";
       }
     });
-  </script>
+
+    recognition.addEventListener("result", (event) => {
+      const transcript = event.results[0][0].transcript;
+      input.value = transcript;
+      // Auto-send after recognizing speech:
+      form.dispatchEvent(new Event("submit"));
+    });
+
+    recognition.addEventListener("end", () => {
+      isListening = false;
+      voiceBtn.textContent = "🎤";
+    });
+  } else {
+    console.warn("SpeechRecognition not supported in this browser.");
+    if (voiceBtn) {
+      voiceBtn.disabled = true;
+      voiceBtn.title = "Voice input not supported in this browser";
+    }
+  }
+</script>
+
 
 </body>
 </html>
