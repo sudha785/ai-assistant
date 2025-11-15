@@ -1,0 +1,12 @@
+# Ignore environment keys
+backend/.env
+
+# Python cache folders
+**/__pycache__
+
+# VS Code settings
+.vscode/
+
+# Ignore build/temporary folders
+dist/
+build/
